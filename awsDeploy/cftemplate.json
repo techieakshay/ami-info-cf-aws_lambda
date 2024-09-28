@@ -1,0 +1,130 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "CloudFormation template to create a Lambda function to retrieve detailed information about a AMI Id by release version.",
+    "Resources": {
+      "AMIInfoLambdaExecutionRole": {
+        "Type": "AWS::IAM::Role",
+        "Properties": {
+          "AssumeRolePolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "lambda.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          },
+          "Policies": [
+            {
+              "PolicyName": "AMIInfoLambdaPolicy",
+              "PolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Effect": "Allow",
+                    "Action": [
+                      "logs:CreateLogGroup",
+                      "logs:CreateLogStream",
+                      "logs:PutLogEvents"
+                    ],
+                    "Resource": "arn:aws:logs:*:*:*"
+                  },
+                  {
+                    "Effect": "Allow",
+                    "Action": [
+                      "ec2:DescribeImages"
+                    ],
+                    "Resource": "*"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "AMIInfoLambdaFunction": {
+        "Type": "AWS::Lambda::Function",
+        "Properties": {
+          "Handler": "index.handler",
+          "FunctionName": "AMIInfoLambdaFunction",
+          "Role": {
+            "Fn::GetAtt": [
+              "AMIInfoLambdaExecutionRole",
+              "Arn"
+            ]
+          },
+          "Runtime": "nodejs14.x",
+          "Code": {
+            "ZipFile": {
+              "Fn::Join": [
+                "\n",
+                [
+                  "const AWS = require('aws-sdk');",
+                  "const ec2 = new AWS.EC2();",
+                  "",
+                  "exports.handler = async (event) => {",
+                  "    const releaseVersion = event.releaseVersion; // Pass the release version in the event",
+                  "    if (!releaseVersion) {",
+                  "        return {",
+                  "            statusCode: 400,",
+                  "            body: JSON.stringify({ error: 'Release version is required' })",
+                  "        };",
+                  "    }",
+                  "",
+                  "    const params = {",
+                  "        Filters: [",
+                  "            {",
+                  "                Name: 'name',",
+                  "                Values: [`*${releaseVersion}*`] // Assuming the AMI name includes the release version",
+                  "            },",
+                  "            {",
+                  "                Name: 'state',",
+                  "                Values: ['available']",
+                  "            }",
+                  "        ]",
+                  "    };",
+                  "",
+                  "    try {",
+                  "        const data = await ec2.describeImages(params).promise();",
+                  "        const images = data.Images;",
+                  "",
+                  "        if (images.length === 0) {",
+                  "            return {",
+                  "                statusCode: 404,",
+                  "                body: JSON.stringify({ error: 'No AMI found for the specified release version' })",
+                  "            };",
+                  "        }",
+                  "",
+                  "        // Returning the AMI IDs",
+                  "        const amiIds = images.map(image => image.ImageId);",
+                  "        return {",
+                  "            statusCode: 200,",
+                  "            body: JSON.stringify({ amiIds })",
+                  "        };",
+                  "    } catch (error) {",
+                  "        return {",
+                  "            statusCode: 500,",
+                  "            body: JSON.stringify({ error: error.message })",
+                  "        };",
+                  "    }",
+                  "};"
+                ]
+              ]
+            }
+          },
+          "Timeout": 30
+        }
+      }
+    },
+    "Outputs": {
+      "AMIInfoLambdaArn": {
+        "Description": "ARN of the Lambda function that retrieves AMI information",
+        "Value": {
+          "Ref": "AMIInfoLambdaFunction"
+        }
+      }
+    }
+  }

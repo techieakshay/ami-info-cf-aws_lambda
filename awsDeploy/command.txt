@@ -1,0 +1,1 @@
+aws cloudformation create-stack --stack-name AmiInfoLambdaStack --template-body file://cftemplate.json --capabilities CAPABILITY_NAMED_IAM --profile  my-profile 
